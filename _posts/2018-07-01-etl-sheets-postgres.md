@@ -13,7 +13,7 @@ Imagine you have a table with sales that looks like this:
 
 ![Sales table]({{ "/assets/etl-drive-postgres/sales_table.png" | absolute_url }})
 
-Now, image that those sales still have to be closed by a sales person after they enter this table.
+Now imagine that those sales still have to be closed by a sales person after they enter this table.
 
 One typical problem that can arise from this process, is that the status of the sale may be managed in a different source. For example an Excel sheet or in the case for this tutorial, on a Google spreadsheet.
 
@@ -21,7 +21,7 @@ The spreadsheet could be something like:
 
 ![Sales spreadsheet]({{ "/assets/etl-drive-postgres/spreadsheet.png" | absolute_url }})
 
-This way, every time a sale enters the database, maybe the sales team sees this new sale on some internal dashboard and adds it to this spreadsheet. Then, they start making contact with the client and update the status accordingly.
+This way, every time a sale enters the database, maybe the sales team sees this new sale on some internal dashboard and adds it to this spreadsheet. Then, they reach out the client and update the status accordingly.
 
 This type of data integration is a very common problem inside companies. Luckily, we have several tools we could use to tackle this issue in an efficient and clean manner. This means, easy to monitor, easy to maintain and readable.
 
@@ -68,7 +68,7 @@ while done is False:
     print("Download %d%%." % int(status.progress() * 100))
 {% endhighlight %}
 
-A couple of dependencies you'll need to run this script: `google-api-python-client` and `oauth2client`.
+A couple of dependencies you'll need to run this script are: `google-api-python-client` and `oauth2client`.
 
 Don't lose the `credentials.json` file, you'll need it later so Airflow can access the API without have to go through the browser authorization process.
 
@@ -192,7 +192,7 @@ def select_columns(ds, **kwargs):
     # export the final file
     filtered_df[['sale_id', 'status', 'updated_at']].to_csv('/home/pacuna/airflow/dags/sales/final.csv', index=False, header=False)
 
-# Load the final csv file to the database. Replace with your database credentials.
+# Load the final csv file into the database. Replace with your database credentials.
 def load_to_dwh(ds, **kwargs):
     conn = pg.connect("host=PG_HOST dbname=PG_NAME user=PG_USER password=PG_PASSWORD")
     cur = conn.cursor()
@@ -204,7 +204,7 @@ def load_to_dwh(ds, **kwargs):
 
 {% endhighlight %}
 
-Finally, let's create another task to truncate the database. Since this spreadsheet could be randomly updated, it's easy to just truncate the table and reload the entire dataset. For that, let's do something different and take advantage of the `PostgresOperator`.
+Finally, let's create another task to truncate the table. Since this spreadsheet could be randomly updated, it's easier to just truncate the table and reload the entire dataset. For that, let's do something different and take advantage of the `PostgresOperator`.
 
 First, add a connection for a new Postgres database using the Airflow connections menu:
 
@@ -242,7 +242,7 @@ t4 = PythonOperator(
     dag=dag)
 {% endhighlight %}
 
-Since these tasks have dependencies between them, we need to declare the order in which they'll run:
+Since these tasks depend on each other, we need to declare the order in which they'll run:
 
 {% highlight python %}
 t2.set_upstream(t1)
@@ -250,7 +250,7 @@ t3.set_upstream(t2)
 t4.set_upstream(t3)
 {% endhighlight %}
 
-The complete script looks like this:
+The complete script should look like this:
 
 {% highlight python %}
 from airflow import DAG
@@ -375,6 +375,6 @@ And if you check your `sale_statuses` table, you should see the data that has be
 
 ![Statuses table]({{ "/assets/etl-drive-postgres/statuses_table.png" | absolute_url }})
 
-And that's it! I'm still learning a lot about Airflow and ETL's in general so if you have any comments or suggestion, you can leave a comment below.
+And that's it! I'm still learning a lot about Airflow and ETL's in general so if you have any comments or suggestion, you can leave a message below.
 
 Thanks for reading!
