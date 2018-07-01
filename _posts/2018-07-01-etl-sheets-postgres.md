@@ -26,7 +26,7 @@ This type of data integration is a very common problem inside companies. Luckily
 
 ## The solution
 
-There are several technologies out there that can help you solve this problem. In my case I chose [Airflow](https://airflow.apache.org/). So I'll show you how to write a simple Airflow DAG to extract the data from the csv file, filter the columns we need, and send it to a Postgres database.
+There are several technologies out there that can help you solve this problem. In my case I chose [Airflow](https://airflow.apache.org/). So I'll show you how to write a simple Airflow DAG to extract the data from the spreadsheet to a csv file, filter the columns we need, and send it to a Postgres database.
 
 ### Google Drive access
 
@@ -90,7 +90,7 @@ create index if not exists sale_statuses_sale_id_index
 
 {% endhighlight %}
 
-Later you can cross the information from this table with your original sales table to have all the information.
+Later you can cross the information from this table with your original sales table in order to integrate the data.
 
 ### Airflow
 
@@ -143,7 +143,9 @@ dag = DAG("update_sales", default_args=default_args, schedule_interval='@daily')
 
 Make sure you adjust your start_date and schedule_interval to suit your needs. In this case, if I turn on the DAG, it will run once for every day since the start date until now.
 
-The first operator will by a `PythonOperator`. It will use a function to download the spreadsheet as a csv file. We'll use the same code we used to authorize the application the first time, but now we have the `credentials.json` file so we don't need to authorize again via the web browser. I created a `sales` folder in the dags directory and moved both the `client_secret` and `credentials` json files into it. The DAG script also has to be in that folder.
+The first operator will by a `PythonOperator`. It will use a function to download the spreadsheet as a csv file. We'll use the same code we used to authorize the application the first time, but now we have the `credentials.json` file so we don't need to authorize again via the web browser.
+
+I created a `sales` folder in the dags directory and moved both the `client_secret` and `credentials` json files into it. The DAG script has to be in that same folder.
 
 {% highlight python %}
 def download_csv(ds, **kwargs):
@@ -170,7 +172,7 @@ def download_csv(ds, **kwargs):
 
 {% endhighlight %}
 
-This method will download the information and write a `statuses.csv` file in the same folder.
+This method will download the spreadsheet as a `statuses.csv` file and will put it in the same folder.
 
 We are going to need two more python functions for other operators. One to select the columns we need, which in this case are `sale_id` and `status` and another one to load the resulting csv file into the target table:
 
@@ -357,7 +359,9 @@ You can toggle the off button of the Dag to start it, and hit refresh a couple o
 
 ![Airflow finished]({{ "/assets/etl-drive-postgres/airflow_finished.png" | absolute_url }})
 
-As you can see the four tasks were run successfully, and since my start date was yesterday, it only ran once and will keep running once a day. If you go to your sales dags directory, you should see both the statuses and the final csv file:
+As you can see the four tasks were run successfully, and since my start date was yesterday, it only ran once and will keep running once a day. 
+
+If you go to your sales dags directory, you should see both the statuses and the final csv file:
 
 ```sh
 $ ls
