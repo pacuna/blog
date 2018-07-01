@@ -3,7 +3,7 @@ layout: post
 title: Airflow ETL for Google Sheets and PostgreSQL
 date:   2018-07-01 15:58:41 -0400
 tags: airflow etl postgresql postgres data drive
-categories: airflow etl data-engineering
+categories: data-engineering etl
 ---
 
 ## The problem
