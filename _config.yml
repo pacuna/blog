@@ -17,8 +17,8 @@ title: Pacuna's Blog
 email: pabloacuna88@gmail.com
 description: >- # this means to ignore newlines until "baseurl:"
   Software Engineering, Data Engineering, Data Science  .
-baseurl: "/blog" # the subpath of your site, e.g. /blog
-url: "http://pacuna.io" # the base hostname & protocol for your site, e.g. http://example.com
+baseurl: "/" # the subpath of your site, e.g. /blog
+url: "https://pacuna.io" # the base hostname & protocol for your site, e.g. http://example.com
 github_username:  pacuna
 
 # Build settings
