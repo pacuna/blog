@@ -9,11 +9,12 @@ comments: true
 
 ## The problem
 
-You need to move data from a PostgreSQL table to another. This could be a table from the same or a different database.
+You need to move data from a PostgreSQL table to another. It could be a table from the same or a different database.
 
 ## Solution 1
 
-The easiest way would be to use the [psycopg](http://initd.org/psycopg/) library to grab the data from the source using a normal cursor:
+The easiest way would be to use the [psycopg](http://initd.org/psycopg/) library to grab the data from the source using a normal cursor and then
+intert it into the destination table:
 
 {% highlight python %}
 src = PostgresHook(postgres_conn_id='source', schema='source_schema')
@@ -25,9 +26,10 @@ cursor.execute("SELECT * FROM users;")
 dest.insert_rows(table=MY_DEST_TABLE, rows=cursor)
 {% endhighlight %}
 
-This would work fine for small amounts of data. But it could perform bad if the size of the table is bigger. The Airflow worker
-would load all the data retrieved from the query into memory before loading it into the destination table.
-This problem can be solved using a [server side cursor](http://initd.org/psycopg/docs/usage.html#server-side-cursors).
+This would work fine for small amounts of data. But it wouldn't be performant if the size of the table is too big. The Airflow worker
+would load all the data retrieved from the query into memory before loading it into the destination table, making it difficult if you are
+copying GB's or even TB's of data. For that case, we can use a [server side cursor](http://initd.org/psycopg/docs/usage.html#server-side-cursors) instead.
+This type of cursor doesn't fetch all the rows at once, but instead it uses batches.
 
 For example, let's say you want to grab all the users created on a certain day and copy them to another table on a daily basis.
 You could use this simple PythonOperator:
@@ -100,6 +102,5 @@ Finally, psycopg2 provides a nice method called `execute_values` that allows us 
 
 Keep in mind that if you have several Dags and tasks doing the same thing, it's probably more convenient to encapsulate the logic and write a custom Operator. On the other hand,
 the transformations in between the loads could vary a lot, so it can become a bit trickier to reuse the code. It's up to you to decide.
-That's it for this one.
 
 Thanks for reading!
