@@ -7,33 +7,54 @@ categories: data-engineering etl
 comments: true
 ---
 
-## The problem
+This is going to be the first of a series of posts related to [Apache Airflow](https://airflow.apache.org/).
+I've been writing and migrating a couple of small ETL jobs at work to Airflow and some of this information might be useful to someone facing similar problems.
+
+## Description
+
+In this first post, I'll discuss an approach to extract data from a Google Drive Spreadsheet and load it into a PostgreSQL database.
+
+For my specific requirement, an incremental update wasn't needed. So using a simple truncate table action before inserting the latest data was enough.
+
+## Scenario
 
 Imagine you have a table with sales that looks like this:
 
 ![Sales table]({{ "/assets/etl-drive-postgres/sales_table.png" | absolute_url }})
 
-Now imagine that those sales still have to be closed by a sales person after they enter this table.
+You can see there's the primary key, a product id, the total amount of the sale and a timestamp.
 
-One typical problem that can arise from this process, is that the status of the sale may be managed in a different source. For example an Excel sheet or in the case for this tutorial, on a Google spreadsheet.
+Now imagine those sales still had to be closed by a sales person after they enter this table.
+One typical problem that can arise from this process, is that the status of the sale may be managed on a different data source. 
+Typically, companies will use some sort of CRM, but in some cases they might want to use something lighter if the operation isn't big enough yet.
+This could be and Excel sheet for example, or in the case for this tutorial, a Google Drive Spreadsheet.
 
-The spreadsheet could be something like:
+The spreadsheet might look something like this:
 
 ![Sales spreadsheet]({{ "/assets/etl-drive-postgres/spreadsheet.png" | absolute_url }})
 
-This way, every time a sale enters the database, maybe the sales team sees this new sale on some internal dashboard and adds it to this spreadsheet. Then, they reach out the client and update the status accordingly.
+Here we have the sale's id associated to the sale's entry in the database, a status and some extra data we don't care about here.
+This way, every time a sale enters the database, maybe the sales team sees it on some internal dashboard and adds it to this spreadsheet, or maybe some trigger function adds it
+automatically. Then, they reach out the client and update the status accordingly.
 
-This type of data integration is a very common problem inside companies. Luckily, we have several tools we could use to tackle this issue in an efficient and clean manner. This means, easy to monitor, easy to maintain and readable.
+Even if it isn't for something as important as a sale, the use of cloud-based documents it's increasing over time, and data integration tools support for them is becoming essential.
 
-## The solution
+## Using Python and Airflow
 
-There are several technologies out there that can help you solve this problem. In my case I chose [Airflow](https://airflow.apache.org/). So I'll show you how to write a simple Airflow DAG to extract the data from the spreadsheet to a csv file, filter the columns we need, and send it to a Postgres database.
+The cool thing about tools like Airflow, is than even though they work in a lower level (lower than typical Data Integration tools), they are much more flexible when you need to write
+integration code for other platforms. You just need support for Python and you're done. Whereas with other tools, you might need special libraries and drivers, and if they're not available, 
+good luck writing your own.
+
+For this particular case we'll write a simple Airflow DAG to extract the data from the Spreadsheet to a csv file, filter the columns we need, and load it into our PostgreSQL database so
+we can join this new data with our original sales data for posterior reporting.
 
 ### Google Drive access
 
-In order to access the Google Drive API, we need to download a credentials file. You can follow the steps mentioned in the [official documentation](https://developers.google.com/drive/api/v3/quickstart/python). The process is pretty straightforward and you should end up with a `client_secret.json` file which is later used to authorize the first request. After that, another `credentials.json` file will be automatically downloaded and all the subsequent requests will use this file instead.
+In order to access the Google Drive API, we need to download a credentials file. You can follow the steps mentioned in the [official documentation](https://developers.google.com/drive/api/v3/quickstart/python).
+The process is pretty straightforward and you should end up with a `client_secret.json` file which is later used to authorize the first request.
+After that, another `credentials.json` file will be automatically downloaded and all the subsequent requests will use this file instead.
 
-Let's create a basic script to download our sheet as a csv file and to authorize the application. We can do that with the following snippet:
+Let's create a basic script to download our sheet as a csv file and to authorize the application. We can do that with the following code:
 
 {% highlight python %}
 
@@ -68,7 +89,7 @@ while done is False:
     print("Download %d%%." % int(status.progress() * 100))
 {% endhighlight %}
 
-A couple of dependencies you'll need to run this script are: `google-api-python-client` and `oauth2client`.
+Some dependencies you'll need to run this script are: `google-api-python-client` and `oauth2client`.
 
 Don't lose the `credentials.json` file, you'll need it later so Airflow can access the API without have to go through the browser authorization process.
 
@@ -80,7 +101,7 @@ Let's create a table to hold the data we'll extract from the spreadsheet:
 create table if not exists sale_statuses
 (
 	sale_id integer,
-	status varchar(255),
+	status text,
 	updated_at timestamp
 )
 ;
@@ -90,8 +111,6 @@ create index if not exists sale_statuses_sale_id_index
 ;
 
 {% endhighlight %}
-
-Later you can cross the information from this table with your original sales table in order to integrate the data.
 
 ### Airflow
 
@@ -119,8 +138,16 @@ import csv
 import pandas as pd
 {% endhighlight %}
 
-We can use pretty much keep all the default configuration from the tutorial example, but let's adjust the start date to yesterday, so
-the DAG runs only once when testing it:
+We can keep pretty much all the default configurations from the tutorial example. Some things we need to change though, 
+are the catchup parameter, so we can choose any start date and the backfill will not run for the past dates. In this case, it doesn't make sense
+to run a backfill, because there's only one state for each entry in the spreadsheet. If you run the dag for yesterday let's say, you would have the same data that you got for today.
+Also, make sure you don't run this task concurrently because it's not idempotent. 
+This means that concurrent runs can alter the state of the other running tasks and the database could end up
+in an inconsistent state. For example, if you have 2 dags running simultaneously, one may truncate the table just before the other dag inserts the data, leaving
+the data fully duplicated.
+
+It's a good practice to write idempotent dags with Airflow, but for this specific case it doesn't have too much sense to worry about it, since these tasks don't require backfills nor
+concurrent runs. Anyway, just to be safe, you could also configure the concurrency of the dag by using the `max_active_runs` and the `concurrency` parameters.
 
 {% highlight python %}
 default_args = {
@@ -139,14 +166,17 @@ default_args = {
 }
 
 # use a daily interval for the schedule
-dag = DAG("update_sales", default_args=default_args, schedule_interval='@daily')
+dag = DAG("update_sales", default_args=default_args, schedule_interval='@daily', catchup=False)
 {% endhighlight %}
 
-Make sure you adjust your start_date and schedule_interval to suit your needs. In this case, if I turn on the DAG, it will run once for every day since the start date until now.
+Make sure you adjust the schedule_interval for your case. In this case, if I turn on the DAG, it will run once each day starting from today.
 
-The first operator will by a `PythonOperator`. It will use a function to download the spreadsheet as a csv file. We'll use the same code we used to authorize the application the first time, but now we have the `credentials.json` file so we don't need to authorize again via the web browser.
+The first operator will be a `PythonOperator`. It will use a python method to download the spreadsheet as a csv file. 
+We'll use the same code we used to authorize the application the first time, 
+but now we have the `credentials.json` file so we don't need to authorize again via the web browser.
 
 I created a `sales` folder in the dags directory and moved both the `client_secret` and `credentials` json files into it. The DAG script has to be in that same folder.
+Make sure to change the paths for the files being used and created.
 
 {% highlight python %}
 def download_csv(ds, **kwargs):
@@ -175,7 +205,8 @@ def download_csv(ds, **kwargs):
 
 This method will download the spreadsheet as a `statuses.csv` file and will put it in the same folder.
 
-We are going to need two more python functions for other operators. One to select the columns we need, which in this case are `sale_id` and `status` and another one to load the resulting csv file into the target table:
+We are also going to need two more python functions for other operators. 
+One to select the columns we need, which in this case are `sale_id` and `status`, and another one to load the resulting csv file into the target table:
 
 {% highlight python %}
 
@@ -204,15 +235,15 @@ def load_to_dwh(ds, **kwargs):
 
 {% endhighlight %}
 
-Finally, let's create another task to truncate the table. Since this spreadsheet could be randomly updated, it's easier to just truncate the table and reload the entire dataset. For that, let's do something different and take advantage of the `PostgresOperator`.
+Finally, let's create another task to truncate the table. For that, let's do something different and take advantage of the `PostgresOperator`.
 
-First, add a connection for a new Postgres database using the Airflow connections menu:
+First, add a connection for a new PostgreSQL database using the Airflow connections menu:
 
 ![Airflow connection]({{ "/assets/etl-drive-postgres/airflow_connection.png" | absolute_url }})
 
 Remember the connection id for later use.
 
-Now we can define the tasks using the Airflow operators:
+Now we can define the tasks using the Python and Postgres operators:
 
 {% highlight python %}
 t1 = PythonOperator(
@@ -250,7 +281,7 @@ t3.set_upstream(t2)
 t4.set_upstream(t3)
 {% endhighlight %}
 
-The complete script should look like this:
+The final script should look like this:
 
 {% highlight python %}
 from airflow import DAG
@@ -282,7 +313,7 @@ default_args = {
     # 'end_date': datetime(2016, 1, 1),
 }
 
-dag = DAG("update_sale_statuses", default_args=default_args, schedule_interval='@daily')
+dag = DAG("update_sale_statuses", default_args=default_args, schedule_interval='@daily', catchup=False)
 
 
 def download_csv(ds, **kwargs):
@@ -352,15 +383,13 @@ t4.set_upstream(t3)
 
 {% endhighlight %}
 
-Now, if you go to the Airflow dashboard, you should see your Dag in the list.
+Now, if you go to the Airflow dashboard, you should see your Dag on the list. If not, try restarting your server and scheduler.
 
 ![Airflow dashboard]({{ "/assets/etl-drive-postgres/airflow_dashboard.png" | absolute_url }})
 
 You can toggle the off button of the Dag to start it, and hit refresh a couple of times until it finishes:
 
 ![Airflow finished]({{ "/assets/etl-drive-postgres/airflow_finished.png" | absolute_url }})
-
-As you can see the four tasks were run successfully, and since my start date was yesterday, it only ran once and will keep running once a day. 
 
 If you go to your sales dags directory, you should see both the statuses and the final csv file:
 
@@ -375,6 +404,8 @@ And if you check your `sale_statuses` table, you should see the data that has be
 
 ![Statuses table]({{ "/assets/etl-drive-postgres/statuses_table.png" | absolute_url }})
 
-And that's it! I'm still learning a lot about Airflow and ETL's in general so if you have any comments or suggestion, you can leave a message below.
+Now you can do all sorts of crazy joins and create beautiful reports for your boss.
+
+And that's it! I'm still learning a lot about Airflow and ETL's in general so if you have any comments or suggestions, you can leave a message below.
 
 Thanks for reading!
