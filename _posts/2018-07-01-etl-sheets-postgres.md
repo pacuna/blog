@@ -42,8 +42,7 @@ Even if it isn't for something as important as a sale, the use of cloud-based do
 ## Using Python and Airflow
 
 The cool thing about tools like Airflow, is than even though they work in a lower level (lower than typical Data Integration tools), they are much more flexible when you need to write
-integration code for other platforms. You just need support for Python and you're done. Whereas with other tools, you might need special libraries and drivers, and if they're not available, 
-good luck writing your own.
+integration code for other platforms. You just need support for Python and you're done. Whereas with other tools, you might need special libraries and drivers, and if they're not available, good luck writing your own.
 
 For this particular case we'll write a simple Airflow DAG to extract the data from the Spreadsheet to a csv file, filter the columns we need, and load it into our PostgreSQL database so
 we can join this new data with our original sales data for posterior reporting.
@@ -138,10 +137,10 @@ import csv
 import pandas as pd
 {% endhighlight %}
 
-We can keep pretty much all the default configurations from the tutorial example. Some things we need to change though, 
+We can keep pretty much all the default configurations from the tutorial example. Some things we need to change though,
 are the catchup parameter, so we can choose any start date and the backfill will not run for the past dates. In this case, it doesn't make sense
 to run a backfill, because there's only one state for each entry in the spreadsheet. If you run the dag for yesterday let's say, you would have the same data that you got for today.
-Also, make sure you don't run this task concurrently because it's not idempotent. 
+Also, make sure you don't run this task concurrently because it's not idempotent.
 This means that concurrent runs can alter the state of the other running tasks and the database could end up
 in an inconsistent state. For example, if you have 2 dags running simultaneously, one may truncate the table just before the other dag inserts the data, leaving
 the data fully duplicated.
@@ -171,7 +170,7 @@ dag = DAG("update_sales", default_args=default_args, schedule_interval='@daily',
 
 Make sure you adjust the schedule_interval for your case. In this case, if I turn on the DAG, it will run once each day starting from today.
 
-The first operator will be a `PythonOperator`. It will use a python method to download the spreadsheet as a csv file. 
+The first operator will be a `PythonOperator`. It will use a python method to download the spreadsheet as a csv file.
 We'll use the same code we used to authorize the application the first time, 
 but now we have the `credentials.json` file so we don't need to authorize again via the web browser.
 
@@ -205,7 +204,7 @@ def download_csv(ds, **kwargs):
 
 This method will download the spreadsheet as a `statuses.csv` file and will put it in the same folder.
 
-We are also going to need two more python functions for other operators. 
+We are also going to need two more python functions for other operators.
 One to select the columns we need, which in this case are `sale_id` and `status`, and another one to load the resulting csv file into the target table:
 
 {% highlight python %}
