@@ -11,7 +11,7 @@ This is the third post from the Airflow series. Here we're covering a very commo
 In this case we are working with two PostgreSQL databases, and we need an incremental update approach. Let's
 see how to do that using Python and Airflow.
 
-A quick way would be to use the [psycopg](http://initd.org/psycopg/) library to grab the data from the source using a normal cursor and then
+A quick way would be to use the [psycopg](http://initd.org/psycopg/) library to grab the data from the source using a regular *client side* cursor and then
 insert it into the destination table. We can define both connections in Airflow by using the `PostgresHook` class. This hook only needs the
 `connection_id` parameter which you can get by creating a connection using the Airflow UI in the connections menu.
 
@@ -30,7 +30,7 @@ As you can see, we start the connections, get a cursor for the source table to g
 This would work fine for a small or medium amount of data. But it wouldn't be performant if the size of the table is larger.
 The Airflow worker would have to load all the data retrieved from the query into memory before inserting it into the destination table, making it difficult if you are
 copying GB's or even TB's of data. For this case, we would do better using a [server side cursor](http://initd.org/psycopg/docs/usage.html#server-side-cursors) instead.
-This type of cursor doesn't fetch all the rows at once, but instead it uses batches.
+This type of cursor doesn't fetch all the rows at once, but instead it uses batches. This way you can control the amount of data that's transfered to the client.
 
 For example, let's say you want to grab all the users created on a certain day and copy them to another table on a daily basis.
 You could use this simple PythonOperator:
